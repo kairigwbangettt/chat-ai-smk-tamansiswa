@@ -1,0 +1,15 @@
+### Uji chat teks (REST Client)
+POST http://localhost:3000/tanya-ai
+Content-Type: application/json
+
+{
+  "pertanyaan": "Jelaskan apa itu fotosintesis dalam 2 kalimat"
+}
+
+### Uji konsep gambar
+POST http://localhost:3000/buat-gambar
+Content-Type: application/json
+
+{
+  "deskripsi": "Ilustrasi robot AI ramah sedang mengajar di depan kelas SMK, gaya anime"
+}

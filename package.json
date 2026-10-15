@@ -1,0 +1,17 @@
+{
+  "name": "chat-ai-smk-tamansiswa-sukabumi",
+  "version": "1.0.0",
+  "description": "Chat AI SMK Taman Siswa Cabang Kota Sukabumi",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@google/genai": "latest",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
