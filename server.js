@@ -21,8 +21,8 @@ const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY.trim() });
 const PORT = process.env.PORT || 3000;
 
 // Model utama dari .env, lalu cadangan bila model tidak ditemukan (404)
-const MODEL_UTAMA = (process.env.MODEL_NAME || 'gemini-2.5-flash').trim();
-const DAFTAR_MODEL = [...new Set([MODEL_UTAMA, 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest'])];
+const MODEL_UTAMA = (process.env.MODEL_NAME || 'gemini-3.5-flash-lite').trim();
+const DAFTAR_MODEL = [...new Set([MODEL_UTAMA, 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'])];
 let modelAktif = null; // model yang terakhir berhasil dipakai
 
 // Peran dan batasan asisten. Tambahkan info resmi sekolah di sini bila sudah ada.
@@ -34,35 +34,36 @@ Aturan:
 - Jangan mengarang informasi spesifik sekolah (alamat, biaya, jadwal, jurusan, nomor telepon, nama guru). Jika tidak tahu, katakan belum punya datanya dan sarankan menghubungi tata usaha sekolah.
 - Jangan membantu hal berbahaya atau melanggar hukum. Jaga jawaban tetap ringkas kecuali diminta detail.`;
 
-const tidur = (ms) => new Promise((r) => setTimeout(r, ms));
 const teksError = (e) => String(e?.message || e);
 const kodeError = (e) => Number(e?.status || e?.code || 0);
 
 const modelTidakAda = (e) => kodeError(e) === 404 || /NOT_FOUND|is not found|not supported for generateContent/i.test(teksError(e));
 const sedangPadat = (e) => kodeError(e) === 503 || /overloaded|UNAVAILABLE/i.test(teksError(e));
 
-// Memanggil Gemini: coba model berurutan, ulangi sekali bila server padat
+// Memanggil Gemini: coba model berurutan, tiap model dibatasi waktu agar tidak menunggu lama
 async function panggilGemini(params) {
   const urutan = modelAktif ? [modelAktif, ...DAFTAR_MODEL.filter((m) => m !== modelAktif)] : DAFTAR_MODEL;
   let galatTerakhir;
 
   for (const model of urutan) {
-    for (let percobaan = 1; percobaan <= 2; percobaan++) {
-      try {
-        const hasil = await gemini.models.generateContent({ ...params, model });
-        if (modelAktif !== model) {
-          modelAktif = model;
-          console.log(`Model yang dipakai: ${model}`);
-        }
-        return hasil;
-      } catch (e) {
-        galatTerakhir = e;
-        console.error(`[${model}] percobaan ${percobaan} gagal ->`, teksError(e).slice(0, 300));
-        if (modelTidakAda(e)) break;                       // pindah ke model berikutnya
-        if (sedangPadat(e) && percobaan < 2) { await tidur(1500); continue; }
-        if (sedangPadat(e)) break;                         // padat: coba model berikutnya
-        throw e;                                           // error lain: hentikan
+    try {
+      const config = {
+        ...(params.config || {}),
+        httpOptions: { timeout: 15000 }, // maksimal 15 detik per model
+        // Model 2.5 "berpikir" dulu secara bawaan; dimatikan agar jawaban lebih cepat
+        ...(model.includes('2.5') ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      };
+      const hasil = await gemini.models.generateContent({ ...params, model, config });
+      if (modelAktif !== model) {
+        modelAktif = model;
+        console.log(`Model yang dipakai: ${model}`);
       }
+      return hasil;
+    } catch (e) {
+      galatTerakhir = e;
+      console.error(`[${model}] gagal ->`, teksError(e).slice(0, 300));
+      const lanjut = modelTidakAda(e) || sedangPadat(e) || /timeout|timed out|abort|deadline/i.test(teksError(e));
+      if (!lanjut) throw e; // error lain (mis. API key salah): hentikan
     }
   }
   throw galatTerakhir;
@@ -163,7 +164,12 @@ app.post('/buat-gambar', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server AI berjalan di http://localhost:${PORT}`);
-  console.log(`Model utama: ${MODEL_UTAMA} (cadangan: ${DAFTAR_MODEL.slice(1).join(', ')})`);
-});
+// Di Vercel, aplikasi diekspor (Vercel yang menjalankannya). Di komputer sendiri, server dijalankan seperti biasa.
+if (process.env.VERCEL === undefined) {
+  app.listen(PORT, () => {
+    console.log(`Server AI berjalan di http://localhost:${PORT}`);
+    console.log(`Model utama: ${MODEL_UTAMA} (cadangan: ${DAFTAR_MODEL.slice(1).join(', ')})`);
+  });
+}
+
+export default app;
